@@ -7,32 +7,43 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
+import ChameleonFramework
 
-class CategoriesViewController: UITableViewController {
-
-    var categories = [CategoryModel]()
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+class CategoriesViewController: SwipeTableViewController {
+    
+    let realm = try! Realm()
+    var categories: Results<CategoryModel>?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         loadData()
     }
     
-    func loadData(request: NSFetchRequest<CategoryModel> = CategoryModel.fetchRequest()) {
-        do {
-            categories = try context.fetch(request)
-        } catch {
-            print("Error while loading \(error)")
+    override func viewWillAppear(_ animated: Bool) {
+        navigationController?.navigationBar.barTintColor = #colorLiteral(red: 0.1019607857, green: 0.2784313858, blue: 0.400000006, alpha: 1)
+        if #available(iOS 13.0, *) {
+            let navBarAppearance = UINavigationBarAppearance()
+            navBarAppearance.configureWithOpaqueBackground()
+            navBarAppearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+            navBarAppearance.backgroundColor = #colorLiteral(red: 0.1019607857, green: 0.2784313858, blue: 0.400000006, alpha: 1)
+            navigationController?.navigationBar.standardAppearance = navBarAppearance
+            navigationController?.navigationBar.scrollEdgeAppearance = navBarAppearance
         }
+    }
+    
+    func loadData() {
+        categories = realm.objects(CategoryModel.self)
         self.tableView.reloadData()
     }
     
-    func saveData() {
+    func saveData(category: CategoryModel) {
         do {
-            try context.save()
+            try realm.write {
+                realm.add(category)
+            }
         } catch {
-            print("Error while loading \(error)")
+            print("Error while Saving \(error)")
         }
         self.tableView.reloadData()
     }
@@ -52,16 +63,29 @@ class CategoriesViewController: UITableViewController {
         
         let action = UIAlertAction(title: "Add", style: .default) { (action) in
             if !textAddField.text.isNilOrEmpty {
-                let category = CategoryModel(context: self.context)
-                category.name = textAddField.text
-                self.categories.append(category)
-                self.saveData()
+                let category = CategoryModel()
+                category.name = textAddField.text!
+                category.cellColor = UIColor.randomFlat().hexValue()
+                self.saveData(category: category)
             }
         }
         
         alert.addAction(action)
         
         present(alert, animated: true, completion: nil)
+    }
+    
+    // MARK: - update model
+    override func updateModel(at index: IndexPath) {
+        do {
+            if let selectedItem = self.categories?[index.row]{
+                try self.realm.write {
+                    self.realm.delete(selectedItem)
+                }
+            }
+        } catch {
+            print("Error while deleting item \(error)")
+        }
     }
 }
 
@@ -71,24 +95,29 @@ extension CategoriesViewController {
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         
-        return categories.count
+        return categories?.count ?? 1
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "categoryItem", for: indexPath)
-        cell.textLabel?.text = categories[indexPath.row].name
-
+        let cell = super.tableView(tableView, cellForRowAt: indexPath)
+        if let cellItem = categories?[indexPath.row] {
+            cell.textLabel?.text = cellItem.name
+            cell.backgroundColor = UIColor(hexString: cellItem.cellColor)
+            cell.textLabel?.textColor = ContrastColorOf(UIColor(hexString: cellItem.cellColor)!, returnFlat: true)
+        }
+        
         return cell
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         self.performSegue(withIdentifier: "categoryItems", sender: self)
+        tableView.deselectRow(at: indexPath, animated: true)
     }
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         let destinationVC = segue.destination as? TodoViewController
         if let selectedIndex = tableView.indexPathForSelectedRow?.row {
-            destinationVC?.selectedCategory = categories[selectedIndex]
+            destinationVC?.selectedCategory = categories?[selectedIndex]
         }
     }
 }
